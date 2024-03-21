@@ -1,0 +1,5 @@
+Dataset Ideas:
+- NY open data: Public tax records. We can make a regression model to predict property prices.
+- Baseball data: Classification problem for whether a hit is a homerun / not
+- Heart attack prediction: Classification problem for low / high risk of a heart attack
+- Company bankruptcy classification: Predict whether a company is bankrupt or not based on financial records
