@@ -1,3 +1,8 @@
+4/2 To-do:
+- Wyatt: API integration for data-fetching
+- Joshua: Data exploration & cleanup (PCA & MLE)
+- Haman: Data exploration & cleanup
+
 Step 1: Data Acquisition & Pre-processing
 - Data selection: We chose the NY public tax records, with a task of using regression to estimate property values based on 139 features and 11.5 million rows. 
   - Since 11.5 million rows seems to be too many data points, we can narrow our dataset down to focus on specific neighborhoods which will hopefully reduce the number of rows we can work with, without reducing the information we can gain from the remaining features.
