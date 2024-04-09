@@ -1,6 +1,6 @@
 ---
-title: "AML Project"
-author: "Wyatt King"
+title: "AML Final Project"
+author: "Wyatt King, Joshua Hahn, Haman Abdulmalek"
 date: "2024-04-03"
 output: html_document
 ---
@@ -10,7 +10,9 @@ library(dplyr)
 library(httr)
 library(jsonlite)
 library(parallel)
+library(caret)
 ```
+## Dataset Retrieval
 
 The Property Valuation and Assessment data that we're using for this project doesn't include a column for neighborhood, so I used another data set (linked below) to retrieve the relevant block codes.
 
@@ -105,3 +107,38 @@ data<- data[-1,] # Remove first row because it exclusively contains NA values fr
 ```
 
 Weirdly, after doing all of the above, our number of columns increased slightly. I think it's because the data dictionary and the API have slightly different column names for a few variables, but I'm not entirely sure. Luckily, any problem relating to this should just get resolved during data cleaning because some columns will just come up as being entirely NA values.
+
+## Data Exploration
+
+Here, we do some preliminary investigations to figure out insights about the dataset that can make the insights easier to retrieve. 
+First, let's see what information we can first gather about our table:
+(1) Number of features
+(2) Number of observations
+(3) Data types of columns
+(4) Number of NA observations
+(5) Zero-variance columns
+(6) Distribution of our target feature (pymkttot: market assessed total value)
+
+```{r}
+csv <- read.table("./data.csv", sep=',', header = T)
+
+print(dim(csv))
+print(sapply(csv, class)) # sapply performs "class" on each column to retrieve its datatype.
+print(sum(is.na(csv)))
+print(colSums(is.na(csv)))
+print(nearZeroVar(csv, saveMetrics = TRUE))
+
+ggplot(data = csv) + geom_histogram(aes(x = pymkttot), fill = "tomato",
+      alpha = 0.3, color = "black") + 
+      labs(title = "Market Assessed Total Value, Raw Data", x = "Price (USD)", y = "COUNT") +
+      theme_bw()
+```
+
+We can find several insights from these explorations:
+(1) Number of features: 146
+(2) Number of rows: 11115
+(3) Data types: We mostly see integers, characters (strings), and logicals. However, some of these characters (strings) should actually be categorical features. We can address this, and also turn them into binary-encoded categorical features to make learning easier. 
+(4) There are many columns with a lot of missing data. In fact, there are several columns that do not have a single data point (subident_reuc, ident, roll_selection, subident). We can prune these columns since they provide no meaningful insight for us.
+(5) Similarly, there are quite a few columns with zero or near-zero variance. Of course, rows with no observations (as found in bullet point 4) will have zero variance. However, there are also some columns that do contain observations, but contain no meaningful variation within the columns. We will also prune these, since they add no value to our model.
+(6) Our histogram has an extremely long tail to the right. This makes sense; we expect there to be many outliers towards the right end in NYC apartments, and a large concentration of buildings within the same price range. However, there is also a large number of pymkttot observations with 0 as the value. These will have to be removed from our observations, as we do not reasonably expect the price of a NYC apartment to be $0. 
+
