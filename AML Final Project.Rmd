@@ -146,7 +146,8 @@ We can find several insights from these explorations:
 
 Let's split our dataset into training & testing data, then address these insights one-by-one. 
 ```{r}
-filtered_csv <- subset(csv, pymkttot != 0)
+filtered_csv <- subset(head(csv, 100), pymkttot != 0)
+filtered_csv$parid <- NULL
 
 split <- initial_split(filtered_csv, prop = 0.70)
 raw_train <- training(split)
@@ -155,12 +156,17 @@ raw_test <- testing(split)
 blueprint <- recipe(pymkttot ~ ., data = raw_train) %>%
              step_string2factor(all_nominal_predictors()) %>%
              step_log(all_outcomes()) %>%
+  
+             step_zv(all_predictors()) %>%
              step_nzv(all_predictors()) %>%
+             
              step_impute_knn(all_predictors()) %>%
              step_center(all_numeric_predictors()) %>%
              step_scale(all_numeric_predictors()) %>%
              step_pca(all_numeric_predictors()) %>%
-             step_other(Neighborhood, threshold = 0.01, other = "other") %>%
+            
+             step_unknown(all_nominal_predictors(), new_level = "NA") %>%
+             step_other(all_nominal(), threshold = 0.01, other = "other") %>%
              step_dummy(all_nominal())
 ```
 
