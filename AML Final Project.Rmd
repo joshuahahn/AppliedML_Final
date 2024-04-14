@@ -11,6 +11,8 @@ library(httr)
 library(jsonlite)
 library(parallel)
 library(caret)
+library(tidymodels)
+library(tidyverse)
 ```
 ## Dataset Retrieval
 
@@ -141,4 +143,32 @@ We can find several insights from these explorations:
 (4) There are many columns with a lot of missing data. In fact, there are several columns that do not have a single data point (subident_reuc, ident, roll_selection, subident). We can prune these columns since they provide no meaningful insight for us.
 (5) Similarly, there are quite a few columns with zero or near-zero variance. Of course, rows with no observations (as found in bullet point 4) will have zero variance. However, there are also some columns that do contain observations, but contain no meaningful variation within the columns. We will also prune these, since they add no value to our model.
 (6) Our histogram has an extremely long tail to the right. This makes sense; we expect there to be many outliers towards the right end in NYC apartments, and a large concentration of buildings within the same price range. However, there is also a large number of pymkttot observations with 0 as the value. These will have to be removed from our observations, as we do not reasonably expect the price of a NYC apartment to be $0. 
+
+Let's split our dataset into training & testing data, then address these insights one-by-one. 
+```{r}
+filtered_csv <- subset(csv, pymkttot != 0)
+
+split <- initial_split(filtered_csv, prop = 0.70)
+raw_train <- training(split)
+raw_test <- testing(split)
+
+blueprint <- recipe(pymkttot ~ ., data = raw_train) %>%
+             step_string2factor(all_nominal_predictors()) %>%
+             step_log(all_outcomes()) %>%
+             step_nzv(all_predictors()) %>%
+             step_impute_knn(all_predictors()) %>%
+             step_center(all_numeric_predictors()) %>%
+             step_scale(all_numeric_predictors()) %>%
+             step_pca(all_numeric_predictors()) %>%
+             step_other(Neighborhood, threshold = 0.01, other = "other") %>%
+             step_dummy(all_nominal())
+```
+
+```{r}
+blueprint_prep <- prep(blueprint, training = raw_train)
+transformed_train <- bake(blueprint_prep, new_data = raw_train)
+transformed_test <- bake(blueprint_prep, new_data = raw_test)
+```
+
+
 
