@@ -1,3 +1,25 @@
+Website specifications:
+- Data selection:
+  - Allow the user to upload their own dataset
+  - Allow the user to select our dataset (the csv that we compiled using the APIs)
+  - Allow the user to visualize the dataset (classification task vs. regression task)
+- Data pre-processing:
+  - Allow the user to select which data pre-processing steps they want to include from:
+    - string2factor
+    - log
+    - zv & nzv
+    - impute_knn
+    - center / scale / pca
+    - unknown / other / dummy
+  - Allow the user to determine training-split ratio
+- Model Tuning & Selection:
+  - Allow the user to select hyperparameters (make sure that the hyperparameter values make sense)
+  - Allow the user to select tuning metric / loss function
+  - Allow the user to visualize hyperparameter results
+- Model results:
+  - Allow the user to run the model on the dataset
+  - Visualize some of the results
+
 4/2 To-do:
 - Wyatt: API integration for data-fetching
 - Joshua: Data exploration & cleanup (PCA & MLE)
