@@ -1,6 +1,6 @@
 ---
-title: "AML Final Project"
-author: "Wyatt King, Joshua Hahn, Haman Abdulmalek"
+title: "AML Project"
+author: "Wyatt King"
 date: "2024-04-03"
 output: html_document
 ---
@@ -13,8 +13,8 @@ library(parallel)
 library(caret)
 library(tidymodels)
 library(tidyverse)
+library(doParallel)
 ```
-## Dataset Retrieval
 
 The Property Valuation and Assessment data that we're using for this project doesn't include a column for neighborhood, so I used another data set (linked below) to retrieve the relevant block codes.
 
@@ -51,7 +51,7 @@ call_func<- function(x){
   return(convert)
 }
 
-called_data<-mclapply(combine, call_func) # mclapply is a parallel processing method, and it's pretty helpful when running so many API calls, but it can also be a bit finicky. If it doesn't work, you can just use lapply()
+called_data<-lapply(combine, call_func) # mclapply is a parallel processing method, and it's pretty helpful when running so many API calls, but it can also be a bit finicky. If it doesn't work, you can just use lapply()
 ```
 
 When we perform all of the above calls, we only receive the columns that contain data for that call. As a result, while we're merging, we need to create a method to retain all of the columns outlined in the data dictionary.
@@ -110,7 +110,9 @@ data<- data[-1,] # Remove first row because it exclusively contains NA values fr
 
 Weirdly, after doing all of the above, our number of columns increased slightly. I think it's because the data dictionary and the API have slightly different column names for a few variables, but I'm not entirely sure. Luckily, any problem relating to this should just get resolved during data cleaning because some columns will just come up as being entirely NA values.
 
-## Data Exploration
+```{r}
+write.csv(data, file="/Users/wyatttheking/Desktop/**Spring 2024**/Machine Learning/Final Project/AML_Final_Project_Dataset.csv")
+```
 
 Here, we do some preliminary investigations to figure out insights about the dataset that can make the insights easier to retrieve. 
 First, let's see what information we can first gather about our table:
@@ -121,8 +123,9 @@ First, let's see what information we can first gather about our table:
 (5) Zero-variance columns
 (6) Distribution of our target feature (pymkttot: market assessed total value)
 
+
 ```{r}
-csv <- read.table("./data.csv", sep=',', header = T)
+csv <- read.table("/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/Final Project/AML_Final_Project_Dataset.csv", sep=',', header = T)
 
 print(dim(csv))
 print(sapply(csv, class)) # sapply performs "class" on each column to retrieve its datatype.
@@ -146,9 +149,66 @@ We can find several insights from these explorations:
 
 Let's split our dataset into training & testing data, then address these insights one-by-one. 
 ```{r}
-filtered_csv <- subset(head(csv, 100), pymkttot != 0)
-filtered_csv$parid <- NULL
+csv <- read.table("/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/Final Project/AML_Final_Project_Dataset.csv", sep=',', header = T)
+filtered_csv <- subset(csv, pymkttot != 0)
+filtered_csv<-filtered_csv[-c(1, 2, 3)] # Remove PARID
+```
 
+First, we're going to remove nominal variables that have an absurdly large number of categories. While it would be nice to include them in our model, it is simply not practical to considering the computing power that it would take to do so.
+
+```{r}
+subset_nominal_columns <- function(data) {
+  nominal_columns <- sapply(data, function(x) is.factor(x) || is.character(x))
+  subset_data <- data[, nominal_columns]
+  return(subset_data)
+}
+
+get_nom<-subset_nominal_columns(filtered_csv)
+
+calculate_unique_entries <- function(data) {
+  unique_counts <- sapply(data, function(x) length(unique(x)))
+  return(unique_counts)
+}
+
+columns_to_remove<-colnames(get_nom)[get_num_vals(get_nom) >= 125]
+filtered_csv<- filtered_csv[!(colnames(filtered_csv) %in% columns_to_remove)] # Remove columns that contain an impractically large number of factors.
+```
+
+Next, we're going to remove columns with a high concentration of NA values. 
+
+```{r}
+identify_na_columns <- function(data, threshold = 0.3) {
+  na_counts <- colMeans(is.na(data))
+  na_columns <- names(na_counts[na_counts > threshold])
+  return(na_columns)
+}
+
+too_many_nas<- identify_na_columns(filtered_csv)
+filtered_csv<-filtered_csv[!(colnames(filtered_csv) %in% c(too_many_nas, "owner"))]
+```
+
+Next, we're going to remove columns that are very highly correlated with our response. We do so because these variables are pretty much the same measure as PYMKTTOT, so it would be akin to cheating if we included them in our model.
+
+```{r}
+correlate_with_all <- function(df, feature) {
+  numeric_df <- df[sapply(df, is.numeric)]
+  correlation <- cor(numeric_df[, feature], numeric_df, use = "pairwise.complete.obs")
+  correlation<- as.data.frame(t(data.frame(correlation^2)))
+  correlation$variable<-row.names(correlation) 
+  return(correlation)
+}
+
+correlation_df<-correlate_with_all(filtered_csv, "pymkttot")
+isolate_high_corr<- correlation_df[correlation_df$V1 >= .8 & correlation_df$V1 != 1,]
+
+high_corr_remove<-na.omit(isolate_high_corr$variable)
+```
+
+```{r}
+filtered_csv<-filtered_csv[!(colnames(filtered_csv) %in% high_corr_remove)]
+```
+
+```{r}
 split <- initial_split(filtered_csv, prop = 0.70)
 raw_train <- training(split)
 raw_test <- testing(split)
@@ -156,25 +216,16 @@ raw_test <- testing(split)
 blueprint <- recipe(pymkttot ~ ., data = raw_train) %>%
              step_string2factor(all_nominal_predictors()) %>%
              step_log(all_outcomes()) %>%
-  
-             step_zv(all_predictors()) %>%
              step_nzv(all_predictors()) %>%
-             
              step_impute_knn(all_predictors()) %>%
              step_center(all_numeric_predictors()) %>%
              step_scale(all_numeric_predictors()) %>%
              step_pca(all_numeric_predictors()) %>%
-            
-             step_unknown(all_nominal_predictors(), new_level = "NA") %>%
-             step_other(all_nominal(), threshold = 0.01, other = "other") %>%
              step_dummy(all_nominal())
 ```
 
 ```{r}
 blueprint_prep <- prep(blueprint, training = raw_train)
-transformed_train <- bake(blueprint_prep, new_data = raw_train)
-transformed_test <- bake(blueprint_prep, new_data = raw_test)
+transformed_train<- bake(blueprint_prep, new_data = raw_train)
+transformed_test<- bake(blueprint_prep, new_data = raw_test)
 ```
-
-
-
