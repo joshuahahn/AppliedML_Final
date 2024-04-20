@@ -1,3 +1,10 @@
+4/20 To-do:
+- Joshua: Website
+- Wyatt: Models
+- Haman: Report
+
+- Goal is to try and finish as much as we can before Thursday so that we have things to discuss with prof. Pijyan
+
 Website specifications:
 - Data selection:
   - Allow the user to upload their own dataset
