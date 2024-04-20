@@ -1,0 +1,100 @@
+---
+title: "Real Estate Call APIs"
+author: "Wyatt King"
+date: "2024-04-20"
+output: html_document
+---
+
+The Property Valuation and Assessment data that we're using for this project doesn't include a column for neighborhood, so I used another data set (linked below) to retrieve the relevant block codes.
+
+https://data.cityofnewyork.us/City-Government/Property-Valuation-and-Assessment-Data/yjxr-fw8i/about_data 
+
+```{r}
+morningside<- "1842 1843 1844 1845 1850 1861 1862 1863 1864 1865 1866 1867 1878 1879 1880 1881 1882 1883 1884 1885 1886 1892 1893 1894 1895 1896 1897 1950 1951 1952 1961 1962 1963 1964 1966 1973 1975 1976 1977 1978 1980 1989 1990 1991 1992 1993 1994 1995"
+morningside<-strsplit(morningside, " ")[[1]]
+
+manhattanville<- "1915 1953 1954 1957 1967 1968 1969 1970 1971 1982 1983 1984 1986 1987 1988 1995 1996 1998 1999 2001 2002 2004 2005 2086 2101"
+manhattanville<-strsplit(manhattanville, " ")[[1]]
+
+hamilton<- "2050 2051 2052 2053 2054 2057 2058 2059 2060 2061 2062 2063 2064 2065 2066 2067 2068 2069 2070 2071 2072 2073 2074 2075 2076 2077 2078 2079 2080 2081 2082 2083 2084 2085 2087 2088 2089 2090 2091 2092 2093 2094 2095 2096 2097 2098 2099 2100 2101 2140"
+hamilton<-strsplit(hamilton, " ")[[1]]
+
+washington_s<- "2106 2107 2108 2109 2110 2111 2112 2114 2115 2116 2117 2118 2119 2120 2121 2122 2123 2124 2125 2126 2127 2128 2129 2130 2131 2132 2133 2134 2135 2136 2137 2138 2139 2140 2141 2142 2143 2144 2145 2152 2153 2162 2163 2176 2177"
+washington_s<-strsplit(washington_s, " ")[[1]]
+
+washington_n<- "2138 2149 2152 2153 2154 2155 2156 2157 2158 2159 2160 2161 2162 2163 2164 2165 2166 2167 2168 2169 2170 2171 2172 2173 2174 2175 2178 2179 2180 2246"
+washington_n<-strsplit(washington_n, " ")[[1]]
+
+combine<- c(morningside, manhattanville, hamilton)
+combine<- unique(combine) # There's some overlap in the block codes, but it's too minimal to be disconcerting
+```
+
+```{r}
+# We create a function to call the NYC Open Data API
+call_func<- function(x){
+  base_url<- "https://data.cityofnewyork.us/resource/8y4t-faws.json?year=2024&BLOCK="
+  updated_url<- paste0(base_url, x)
+  fetch<-GET(updated_url)
+  convert<- fromJSON(rawToChar(fetch$content))
+  convert<- convert[convert$boro==1,]
+  return(convert)
+}
+
+called_data<-lapply(combine, call_func)
+```
+
+When we perform all of the above calls, we only receive the columns that contain data for that call. As a result, while we're merging, we need to create a method to retain all of the columns outlined in the data dictionary.
+
+To find the data dictionary, you can go to NYC Open Data page and then download the attatchment.
+https://data.cityofnewyork.us/City-Government/Property-Valuation-and-Assessment-Data-Tax-Classes/8y4t-faws/about_data
+
+```{r}
+# First we call the data dictionary and retrieve what the column names should be
+columns<-readxl::read_xlsx("/Users/wyatttheking/Desktop/**Spring 2024**/Machine Learning/Final Project/Property_Assessment_Data_Dictionary (1).xlsx", skip = 1, sheet=2)
+
+columns<-na.omit(columns$`Column Name`) # Given the structure of the sheet, we just need to remove some NA values toward the end of it.
+
+matr<- matrix(ncol= length(columns)) # We create a matrix with as many columns as the data dictionary says.
+data<-as.data.frame(matr)
+colnames(data)<- tolower(columns) # We need to lower case column names for when we go to merge
+
+for(j in colnames(data)){
+  data[, j]<- as.character(data[, j]) # Turn all of the columns from being logical to character
+}
+```
+
+```{r}
+# We need to create a function that combines our data such that we retain all of the columns from the data dictionary
+combine_dataframes <- function(data1, data2) {
+  # Get columns 
+  all_cols <- union(names(data1), names(data2)) 
+  
+  # If one data frame lacks a given column, fill that column with NA values
+  for (col in setdiff(all_cols, names(data1))) {
+    data1[[col]] <- NA
+  }
+  
+  for (col in setdiff(all_cols, names(data2))) {
+    data2[[col]] <- NA
+  }
+  
+  # Reorder the columns so they match up
+  data1 <- data1[, all_cols]
+  data2 <- data2[, all_cols]
+  
+  # Combine our data
+  combined_data <- rbind(data1, data2)
+  return(combined_data)
+}
+
+```
+
+```{r}
+for(j in seq_along(called_data)){
+  get_data<- called_data[[j]]
+  data<- combine_dataframes(data, get_data)
+}
+data<- data[-1,] # Remove first row because it exclusively contains NA values from creating an empty matrix earlier
+```
+
+Weirdly, after doing all of the above, our number of columns increased slightly. I think it's because the data dictionary and the API have slightly different column names for a few variables, but I'm not entirely sure. Luckily, any problem relating to this should just get resolved during data cleaning because some columns will just come up as being entirely NA values.
