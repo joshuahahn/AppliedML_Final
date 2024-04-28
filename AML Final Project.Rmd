@@ -368,7 +368,7 @@ SVMGrid_RBF <- expand.grid (sigma = c(0.01, 0.1, 1, 10),
 ```{r}
 set.seed(1)
 job::job({
-  SVM_Linear1 <- train(pymkttot ~ ., 
+  SVM_Linear <- train(pymkttot ~ ., 
                     data = transformed_train,
                     method = "svmLinear",
                     trControl = resample,
@@ -381,7 +381,7 @@ job::job({
 ```{r}
 set.seed(1)
 job::job({
-  SVM_Poly1 <- train(pymkttot ~ ., 
+  SVM_Poly <- train(pymkttot ~ ., 
                     data = transformed_train,
                     method = "svmPoly",
                     trControl = resample,
