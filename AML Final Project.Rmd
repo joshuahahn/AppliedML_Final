@@ -16,104 +16,6 @@ library(tidyverse)
 library(doParallel)
 ```
 
-The Property Valuation and Assessment data that we're using for this project doesn't include a column for neighborhood, so I used another data set (linked below) to retrieve the relevant block codes.
-
-https://data.cityofnewyork.us/City-Government/Property-Valuation-and-Assessment-Data/yjxr-fw8i/about_data 
-
-```{r}
-morningside<- "1842 1843 1844 1845 1850 1861 1862 1863 1864 1865 1866 1867 1878 1879 1880 1881 1882 1883 1884 1885 1886 1892 1893 1894 1895 1896 1897 1950 1951 1952 1961 1962 1963 1964 1966 1973 1975 1976 1977 1978 1980 1989 1990 1991 1992 1993 1994 1995"
-morningside<-strsplit(morningside, " ")[[1]]
-
-manhattanville<- "1915 1953 1954 1957 1967 1968 1969 1970 1971 1982 1983 1984 1986 1987 1988 1995 1996 1998 1999 2001 2002 2004 2005 2086 2101"
-manhattanville<-strsplit(manhattanville, " ")[[1]]
-
-hamilton<- "2050 2051 2052 2053 2054 2057 2058 2059 2060 2061 2062 2063 2064 2065 2066 2067 2068 2069 2070 2071 2072 2073 2074 2075 2076 2077 2078 2079 2080 2081 2082 2083 2084 2085 2087 2088 2089 2090 2091 2092 2093 2094 2095 2096 2097 2098 2099 2100 2101 2140"
-hamilton<-strsplit(hamilton, " ")[[1]]
-
-washington_s<- "2106 2107 2108 2109 2110 2111 2112 2114 2115 2116 2117 2118 2119 2120 2121 2122 2123 2124 2125 2126 2127 2128 2129 2130 2131 2132 2133 2134 2135 2136 2137 2138 2139 2140 2141 2142 2143 2144 2145 2152 2153 2162 2163 2176 2177"
-washington_s<-strsplit(washington_s, " ")[[1]]
-
-washington_n<- "2138 2149 2152 2153 2154 2155 2156 2157 2158 2159 2160 2161 2162 2163 2164 2165 2166 2167 2168 2169 2170 2171 2172 2173 2174 2175 2178 2179 2180 2246"
-washington_n<-strsplit(washington_n, " ")[[1]]
-
-combine<- c(morningside, manhattanville, hamilton)
-combine<- unique(combine) # There's some overlap in the block codes, but it's too minimal to be disconcerting
-```
-
-```{r}
-# We create a function to call the NYC Open Data API
-call_func<- function(x){
-  base_url<- "https://data.cityofnewyork.us/resource/8y4t-faws.json?year=2024&BLOCK="
-  updated_url<- paste0(base_url, x)
-  fetch<-GET(updated_url)
-  convert<- fromJSON(rawToChar(fetch$content))
-  convert<- convert[convert$boro==1,]
-  return(convert)
-}
-
-called_data<-lapply(combine, call_func) # mclapply is a parallel processing method, and it's pretty helpful when running so many API calls, but it can also be a bit finicky. If it doesn't work, you can just use lapply()
-```
-
-When we perform all of the above calls, we only receive the columns that contain data for that call. As a result, while we're merging, we need to create a method to retain all of the columns outlined in the data dictionary.
-
-To find the data dictionary, you can go to NYC Open Data page and then download the attatchment.
-https://data.cityofnewyork.us/City-Government/Property-Valuation-and-Assessment-Data-Tax-Classes/8y4t-faws/about_data
-
-```{r}
-# First we call the data dictionary and retrieve what the column names should be
-columns<-readxl::read_xlsx("/Users/wyatttheking/Desktop/**Spring 2024**/Machine Learning/Final Project/Property_Assessment_Data_Dictionary (1).xlsx", skip = 1, sheet=2)
-
-columns<-na.omit(columns$`Column Name`) # Given the structure of the sheet, we just need to remove some NA values toward the end of it.
-
-matr<- matrix(ncol= length(columns)) # We create a matrix with as many columns as the data dictionary says.
-data<-as.data.frame(matr)
-colnames(data)<- tolower(columns) # We need to lower case column names for when we go to merge
-
-for(j in colnames(data)){
-  data[, j]<- as.character(data[, j]) # Turn all of the columns from being logical to character
-}
-```
-
-```{r}
-# We need to create a function that combines our data such that we retain all of the columns from the data dictionary
-combine_dataframes <- function(data1, data2) {
-  # Get columns 
-  all_cols <- union(names(data1), names(data2)) 
-  
-  # If one data frame lacks a given column, fill that column with NA values
-  for (col in setdiff(all_cols, names(data1))) {
-    data1[[col]] <- NA
-  }
-  
-  for (col in setdiff(all_cols, names(data2))) {
-    data2[[col]] <- NA
-  }
-  
-  # Reorder the columns so they match up
-  data1 <- data1[, all_cols]
-  data2 <- data2[, all_cols]
-  
-  # Combine our data
-  combined_data <- rbind(data1, data2)
-  return(combined_data)
-}
-
-```
-
-```{r}
-for(j in seq_along(called_data)){
-  get_data<- called_data[[j]]
-  data<- combine_dataframes(data, get_data)
-}
-data<- data[-1,] # Remove first row because it exclusively contains NA values from creating an empty matrix earlier
-```
-
-Weirdly, after doing all of the above, our number of columns increased slightly. I think it's because the data dictionary and the API have slightly different column names for a few variables, but I'm not entirely sure. Luckily, any problem relating to this should just get resolved during data cleaning because some columns will just come up as being entirely NA values.
-
-```{r}
-write.csv(data, file="/Users/wyatttheking/Desktop/**Spring 2024**/Machine Learning/Final Project/AML_Final_Project_Dataset.csv")
-```
-
 Here, we do some preliminary investigations to figure out insights about the dataset that can make the insights easier to retrieve. 
 First, let's see what information we can first gather about our table:
 (1) Number of features
@@ -149,8 +51,7 @@ We can find several insights from these explorations:
 
 Let's split our dataset into training & testing data, then address these insights one-by-one. 
 ```{r}
-#csv <- read.table("/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/Final Project/AML_Final_Project_Dataset.csv", sep=',', header = T)
-csv <- read.table("./data.csv", sep=',', header = T)
+csv <- read.table("/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/Final Project/AML_Final_Project_Dataset.csv", sep=',', header = T)
 filtered_csv <- subset(csv, pymkttot != 0)
 filtered_csv<-filtered_csv[-c(1, 2, 3)] # Remove PARID
 ```
@@ -171,21 +72,88 @@ calculate_unique_entries <- function(data) {
   return(unique_counts)
 }
 
-columns_to_remove<-colnames(get_nom)[get_num_vals(get_nom) >= 125]
-filtered_csv<- filtered_csv[!(colnames(filtered_csv) %in% columns_to_remove)] # Remove columns that contain an impractically large number of factors.
+numb_in_cat<-calculate_unique_entries(get_nom)
+print(numb_in_cat)
+```
+
+```{r}
+# Owner. Isolate five largest property owners and make all else an "Other" 
+unique_counts <- sapply(filtered_csv$owner, function(x) length(unique(x)))
+freq_uniq_counts<-table(filtered_csv$owner)
+gr_lw<- sort(freq_uniq_counts, decreasing = T)
+top_six<-head(gr_lw) 
+names(top_six) # We get the six property owners who own the highest number of props
+
+rename_owner<-function(x){
+  if(!(x %in% names(top_six)[-2])){ # We subset top_six to exclude entries w owner unavailable
+    return("OTHER")
+  }
+  else{
+    return(x)
+  }
+}
+
+filtered_csv$owner<-sapply(filtered_csv$owner, rename_owner)
+```
+
+```{r}
+# Street.
+freq_uniq_counts<-table(filtered_csv$street_name)
+gr_lw<- sort(freq_uniq_counts, decreasing = T)
+top_six<-head(gr_lw)
+
+rename_street<-function(x){
+  if(!(x %in% names(top_six))){ # We subset top_six to exclude entries w owner unavailable
+    return("OTHER")
+  }
+  else{
+    return(x)
+  }
+}
+
+filtered_csv$street_name<-sapply(filtered_csv$street_name, rename_street)
+```
+
+```{r}
+# Housenum_low and housenum_hi, we will convert to being numeric
+filtered_csv$housenum_lo<-as.numeric(filtered_csv$housenum_lo)
+filtered_csv$housenum_hi<- as.numeric(filtered_csv$housenum_hi)
+```
+
+For building class, we will reduce the number of categories based on what type of dwelling each property is (as indicated by the letter).
+
+```{r}
+red_bldg_class<-function(y){
+  split<- strsplit(y, "[0-9]")[[1]]
+  return(split)
+}
+
+filtered_csv$bldg_class<-sapply(filtered_csv$bldg_class, red_bldg_class)
+```
+
+For date of the most recent apportionment, we switch from using the exact date to using the year, which we then turn into being a numeric variable.
+
+```{r}
+filtered_csv$appt_date<-as.numeric(substr(filtered_csv$appt_date, 1, 4))
+```
+
+In our data, there is no consistent way that properties label their apartment numbers, especially considering how our data includes many different types of properties. Consequently, the "apartment number" feature does not necessarily measure the same thing between properties. As a result, we're going to remove it from our data.
+
+```{r}
+filtered_csv<-filtered_csv[!(colnames(filtered_csv) %in% "aptno")]
 ```
 
 Next, we're going to remove columns with a high concentration of NA values. 
 
 ```{r}
-identify_na_columns <- function(data, threshold = 0.3) {
+identify_na_columns <- function(data, threshold = 0.9) {
   na_counts <- colMeans(is.na(data))
   na_columns <- names(na_counts[na_counts > threshold])
   return(na_columns)
 }
 
 too_many_nas<- identify_na_columns(filtered_csv)
-filtered_csv<-filtered_csv[!(colnames(filtered_csv) %in% c(too_many_nas, "owner"))]
+filtered_csv<-filtered_csv[!(colnames(filtered_csv) %in% c(too_many_nas))]
 ```
 
 Next, we're going to remove columns that are very highly correlated with our response. We do so because these variables are pretty much the same measure as PYMKTTOT, so it would be akin to cheating if we included them in our model.
@@ -210,6 +178,7 @@ filtered_csv<-filtered_csv[!(colnames(filtered_csv) %in% high_corr_remove)]
 ```
 
 ```{r}
+set.seed(1)
 split <- initial_split(filtered_csv, prop = 0.70)
 raw_train <- training(split)
 raw_test <- testing(split)
@@ -226,10 +195,254 @@ blueprint <- recipe(pymkttot ~ ., data = raw_train) %>%
 ```
 
 ```{r}
+set.seed(1)
 blueprint_prep <- prep(blueprint, training = raw_train)
 transformed_train<- bake(blueprint_prep, new_data = raw_train)
 transformed_test<- bake(blueprint_prep, new_data = raw_test)
 ```
+
+## Building our Models
+
+### Random Forest
+
+```{r}
+library(randomForest) 
+```
+
+```{r}
+initial_rf <- randomForest(pymkttot ~., data = transformed_train)
+plot(initial_rf)
+```
+
+```{r}
+set.seed(1)
+resample <- trainControl(method = "cv", number = 5)
+
+hyper_grid <- expand.grid(mtry = c(30, 40, 50, 60, 70),
+                          splitrule = c("variance", "extratrees"),
+                          min.node.size = c(3, 5, 7))
+
+## Tuning Hyperparameters
+set.seed(1)
+rf_fit <- train(pymkttot ~ .,
+                data = transformed_train, 
+                method = "ranger", 
+                trControl = resample, 
+                tuneGrid = hyper_grid,
+                metric = "RMSE",
+                num.trees = 300) 
+```
+
+```{r}
+ggplot(rf_fit)
+# heatmap
+trellis.par.set(caretTheme()) # optional
+plot(rf_fit, metric = "RMSE", plotType = "level")
+```
+
+```{r}
+results_df<-rf_fit$results
+min_rmse<-results_df[results_df$RMSE== min(results_df$RMSE),]
+print(min_rmse)
+```
+
+```{r}
+fitControl_final <- trainControl(method = "none")
+RF_final <- train(pymkttot ~., 
+                  data = transformed_train,
+                  method = "ranger",
+                  trControl = fitControl_final,
+                  metric = "RMSE",
+                  tuneGrid = data.frame(mtry = min_rmse$mtry,
+                                        min.node.size = min_rmse$min.node.size,
+                                        splitrule = min_rmse$splitrule),
+                  num.trees = 300)
+```
+
+```{r}
+calculate_rmse <- function(actual, predicted) {
+  squared_errors <- (actual - predicted) ^ 2
+  mean_squared_error <- mean(squared_errors)
+  rmse <- sqrt(mean_squared_error)
+  return(rmse)
+}
+```
+
+```{r}
+RF_pred_train <- predict(RF_final, newdata = transformed_train)
+plot(transformed_train$pymkttot, RF_pred_train)
+train_rmse<-calculate_rmse(transformed_train$pymkttot, RF_pred_train)
+cat("Our RMSE for our training data set is about ", round(train_rmse, 3), ".", sep="")
+
+RF_pred_test <- predict(RF_final, newdata = transformed_test)
+plot(transformed_test$pymkttot, RF_pred_test)
+test_rmse<-calculate_rmse(transformed_test$pymkttot, RF_pred_test)
+cat("Our RMSE for our testing data set is about ", round(test_rmse, 3), ".", sep="")
+```
+
+### XGBoost
+
+```{r}
+library(xgboost)
+```
+
+```{r}
+set.seed(1)
+resample <- trainControl(method = "cv", number = 5)
+hyper_grid <- expand.grid(nrounds = c(100, 200, 300),  # number of trees 
+                       max_depth = c(4, 6, 8, 10),     # maximum depth of a tree 
+                       eta = c(0.05, 0.1, 0.2, 0.3),   # controls the learning rate
+                       min_child_weight = c(5, 10, 15), # minimum sum of instance weight needed in a child node
+                       subsample = c(0.4, 0.6),   # subsample ratio of the training instances
+                       gamma = 0,   # minimum loss reduction required to make a further partition
+                       colsample_bytree = 1) 
+```
+
+```{r}
+set.seed(1)
+job::job({
+  xg_fit <- train(pymkttot ~ .,
+                data = transformed_train, 
+                method = "xgbTree", 
+                trControl = resample, 
+                tuneGrid = hyper_grid,
+                metric = "RMSE",
+                verbosity=0)
+})
+```
+
+```{r}
+plot(xg_fit)
+```
+
+```{r}
+xg_df<-xg_fit$results[xg_fit$results$RMSE== min(xg_fit$results$RMSE),]
+```
+
+```{r}
+fitControl_final <- trainControl(method = "none")
+XG_final <- train(pymkttot ~., 
+                  data = transformed_train,
+                  method = "xgbTree",
+                  trControl = fitControl_final,
+                  metric = "RMSE",
+                  tuneGrid = data.frame(eta=xg_df$eta,
+                                        max_depth=xg_df$max_depth,
+                                        gamma= xg_df$gamma,
+                                        colsample_bytree= xg_df$colsample_bytree,
+                                        min_child_weight= xg_df$min_child_weight,
+                                        subsample= xg_df$subsample,
+                                        nrounds=xg_df$nrounds),
+                  verbosity=0)
+```
+
+```{r}
+xg_pred_train <- predict(XG_final, newdata = transformed_train)
+plot(transformed_train$pymkttot, xg_pred_train, main="XGBoost Model: Training Set", xlab= "Actual PYMKTTOT", ylab="Predicted PYMKTTOT")
+train_rmse<-calculate_rmse(transformed_train$pymkttot, xg_pred_train)
+cat("Our RMSE for our training data set is about ", round(train_rmse, 3), ".", sep="")
+
+
+xg_pred_test <- predict(XG_final, newdata = transformed_test)
+plot(transformed_test$pymkttot, xg_pred_test, main="XGBoost Model: Testing Set", xlab= "Actual PYMKTTOT", ylab="Predicted PYMKTTOT")
+test_rmse<-calculate_rmse(transformed_test$pymkttot, xg_pred_test)
+cat("Our RMSE for our testing data set is about ", round(test_rmse, 3), ".", sep="")
+```
+
+### SVM
+
+```{r}
+resample <- trainControl(method = "cv",
+                         number = 5,
+                         summaryFunction = defaultSummary)
+
+
+SVMGrid_Lin <- expand.grid(C = c(0.01, 0.1, 1, 10)) 
+SVMGrid_Poly <- expand.grid(C = c(0.01, 0.1, 1, 10),
+                            degree = c(2, 3),
+                            scale = 1)
+SVMGrid_RBF <- expand.grid (sigma = c(0.01, 0.1, 1, 10),
+                            C = c(0.01, 0.1, 1, 10))
+```
+
+```{r}
+set.seed(1)
+job::job({
+  SVM_Linear <- train(pymkttot ~ ., 
+                    data = transformed_train,
+                    method = "svmLinear",
+                    trControl = resample,
+                    verbose = FALSE,
+                    tuneGrid = SVMGrid_Lin,
+                    metric = "RMSE")
+})
+```
+
+```{r}
+set.seed(1)
+job::job({
+  SVM_Poly <- train(pymkttot ~ ., 
+                    data = transformed_train,
+                    method = "svmPoly",
+                    trControl = resample,
+                    verbose = FALSE,
+                    tuneGrid = SVMGrid_Poly,
+                    metric = "RMSE")
+})
+```
+
+```{r}
+job::job({
+  SVM_RBF <- train(pymkttot ~ ., 
+                 data = transformed_train,
+                 method = "svmRadial",
+                 trControl = resample,
+                 verbose = FALSE,
+                 tuneGrid = SVMGrid_RBF,
+                 metric = "RMSE")
+})
+```
+
+```{r}
+lin_results<-SVM_Linear$results
+min_rmse1<-lin_results[lin_results$RMSE== min(lin_results$RMSE),]
+  
+poly_results<-SVM_Poly$results
+min_rmse2<-poly_results[poly_results$RMSE== min(poly_results$RMSE),]
+
+rbf_results<- SVM_RBF$results
+min_rmse3<-rbf_results[rbf_results$RMSE== min (rbf_results$RMSE),]
+
+l1<-list(min_rmse1, min_rmse2, min_rmse3)
+print(l1)
+```
+
+```{r}
+fitControl_final <- trainControl(method = "none")
+svm_final <- train(pymkttot ~., 
+                  data = transformed_train,
+                  method = "svmRadial",
+                  trControl = resample,
+                  verbose = FALSE,
+                  tuneGrid = data.frame(
+                    sigma= min_rmse3$sigma,
+                    C= min_rmse3$C
+                  ),
+                  metric = "RMSE")
+```
+
+```{r}
+svm_pred_train <- predict(svm_final, newdata = transformed_train)
+plot(transformed_train$pymkttot, svm_pred_train, main="SVM Model: Training Set", xlab= "Actual PYMKTTOT", ylab="Predicted PYMKTTOT")
+train_rmse<-calculate_rmse(transformed_train$pymkttot, svm_pred_train)
+cat("Our RMSE for our training data set is about ", round(train_rmse, 3), ".", sep="")
+
+svm_pred_test <- predict(svm_final, newdata = transformed_test)
+plot(transformed_test$pymkttot, svm_pred_test, main="SVM Model: Testing Set", xlab= "Actual PYMKTTOT", ylab="Predicted PYMKTTOT")
+test_rmse<-calculate_rmse(transformed_test$pymkttot, svm_pred_test)
+cat("Our RMSE for our testing data set is about ", round(test_rmse, 3), ".", sep="")
+```
+
 
 
 
