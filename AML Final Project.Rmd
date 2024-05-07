@@ -149,7 +149,8 @@ We can find several insights from these explorations:
 
 Let's split our dataset into training & testing data, then address these insights one-by-one. 
 ```{r}
-csv <- read.table("/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/Final Project/AML_Final_Project_Dataset.csv", sep=',', header = T)
+#csv <- read.table("/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/Final Project/AML_Final_Project_Dataset.csv", sep=',', header = T)
+csv <- read.table("./data.csv", sep=',', header = T)
 filtered_csv <- subset(csv, pymkttot != 0)
 filtered_csv<-filtered_csv[-c(1, 2, 3)] # Remove PARID
 ```
@@ -229,3 +230,11 @@ blueprint_prep <- prep(blueprint, training = raw_train)
 transformed_train<- bake(blueprint_prep, new_data = raw_train)
 transformed_test<- bake(blueprint_prep, new_data = raw_test)
 ```
+
+
+
+
+
+
+
+
