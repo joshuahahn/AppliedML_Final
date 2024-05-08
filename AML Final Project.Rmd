@@ -1,7 +1,7 @@
 ---
-title: "AML Project"
-author: "Wyatt King"
-date: "2024-04-03"
+title: "Applied Machine Learning Final Project"
+author: "Wyatt King, Haman Abdulmalek, and Joshua Hahn"
+date: "2024-05-08"
 output: html_document
 ---
 
@@ -14,6 +14,7 @@ library(caret)
 library(tidymodels)
 library(tidyverse)
 library(doParallel)
+library(job)
 ```
 
 Here, we do some preliminary investigations to figure out insights about the dataset that can make the insights easier to retrieve. 
@@ -237,6 +238,7 @@ rf_fit <- train(pymkttot ~ .,
 ggplot(rf_fit)
 # heatmap
 trellis.par.set(caretTheme()) # optional
+file<- "/Users/wyatttheking/Desktop/Spring 2024/Machine Learning/rf_tuning2.png"
 plot(rf_fit, metric = "RMSE", plotType = "level")
 ```
 
@@ -270,12 +272,12 @@ calculate_rmse <- function(actual, predicted) {
 
 ```{r}
 RF_pred_train <- predict(RF_final, newdata = transformed_train)
-plot(transformed_train$pymkttot, RF_pred_train)
+plot(transformed_train$pymkttot, RF_pred_train, main="Random Forest Model: Training Set", xlab= "Actual PYMKTTOT", ylab="Predicted PYMKTTOT")
 train_rmse<-calculate_rmse(transformed_train$pymkttot, RF_pred_train)
 cat("Our RMSE for our training data set is about ", round(train_rmse, 3), ".", sep="")
 
 RF_pred_test <- predict(RF_final, newdata = transformed_test)
-plot(transformed_test$pymkttot, RF_pred_test)
+plot(transformed_test$pymkttot, RF_pred_test, main="Random Forest Model: Testing Set", xlab= "Actual PYMKTTOT", ylab="Predicted PYMKTTOT")
 test_rmse<-calculate_rmse(transformed_test$pymkttot, RF_pred_test)
 cat("Our RMSE for our testing data set is about ", round(test_rmse, 3), ".", sep="")
 ```
@@ -300,7 +302,7 @@ hyper_grid <- expand.grid(nrounds = c(100, 200, 300),  # number of trees
 
 ```{r}
 set.seed(1)
-job::job({
+job({
   xg_fit <- train(pymkttot ~ .,
                 data = transformed_train, 
                 method = "xgbTree", 
@@ -367,7 +369,7 @@ SVMGrid_RBF <- expand.grid (sigma = c(0.01, 0.1, 1, 10),
 
 ```{r}
 set.seed(1)
-job::job({
+job({
   SVM_Linear <- train(pymkttot ~ ., 
                     data = transformed_train,
                     method = "svmLinear",
@@ -380,7 +382,7 @@ job::job({
 
 ```{r}
 set.seed(1)
-job::job({
+job({
   SVM_Poly <- train(pymkttot ~ ., 
                     data = transformed_train,
                     method = "svmPoly",
@@ -392,7 +394,7 @@ job::job({
 ```
 
 ```{r}
-job::job({
+job({
   SVM_RBF <- train(pymkttot ~ ., 
                  data = transformed_train,
                  method = "svmRadial",
@@ -442,11 +444,6 @@ plot(transformed_test$pymkttot, svm_pred_test, main="SVM Model: Testing Set", xl
 test_rmse<-calculate_rmse(transformed_test$pymkttot, svm_pred_test)
 cat("Our RMSE for our testing data set is about ", round(test_rmse, 3), ".", sep="")
 ```
-
-
-
-
-
 
 
 
