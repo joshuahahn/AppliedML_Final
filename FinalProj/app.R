@@ -14,6 +14,7 @@ library(caret)
 library(tidymodels)
 library(DT)
 library(randomForest)
+library(rsconnect)
 
 
 data_initial <- read.csv("credit.csv", header = TRUE)
@@ -62,7 +63,9 @@ ui <- fluidPage(
                                                 "Condense feautres via Principal Component Analysis"))
                ),
                mainPanel(
+                 helpText("Training Data"),
                  dataTableOutput("training_preview"),
+                 helpText("Testing Data"),
                  dataTableOutput("testing_preview")
                )
              )
@@ -99,9 +102,6 @@ ui <- fluidPage(
                  
                  # SVM parameters
                  conditionalPanel(condition = "input.modelType == 'Support Vector Machine (SVM)'",
-                                  selectInput("svm_type_input",
-                                              "SVM Model Type:",
-                                              choices = c("Linear", "Polynomial")),
                                   helpText("Please enter parameters as a comma-separated list of nonnegative numbers."),
                                   textInput("c_param_input", "C Parameter")),
                
@@ -118,33 +118,73 @@ ui <- fluidPage(
                
                ),
                mainPanel(
-                 tabsetPanel(
-                   tabPanel("Scatterplot", 
-                            plotOutput("hyperparameter_results")),
-                   tabPanel("Numeric Summary",
-                            dataTableOutput("result1"))
-                 )
+                 plotOutput("hyperparameter_results")
                )
              )
     ),
     
-    tabPanel("Fourth Panel",
-             titlePanel("Histogram"),
+    tabPanel("Model Building",
+             titlePanel("Model Selection & Hyperparameter Tuning"),
              sidebarLayout(
                sidebarPanel(
-                 selectInput("var", "Variable", choices = NULL), 
-                 numericInput("bins", "Number of bins", min = 1, max = 50, step = 1, value = 10),
-                 radioButtons("color", "Color of bins:",
-                              choices = list("Blue" = "blue", "Red" = "red", "Green" = "green"),
-                              selected = "blue"),
-                 actionButton("click","Submit")
+                 selectInput("modelType_final", "Model:", choices = c("Random Forest (RF)", 
+                                                                "Support Vector Machine (SVM)", 
+                                                                "Extreme Gradient Boosting (XGBoost)")),
+                 
+                 selectInput("resampling_final", "Resampling Method:", choices=c("Cross-validation (CV)",
+                                                                           "Repeated Cross-validation (Repeated CV)")),
+                 
+                 # CV and RepeatedCV parameters
+                 numericInput("cv_value_final",
+                              "Number of cross-validation folds:",
+                              value=1,
+                              min=1),
+                 conditionalPanel(condition = "input.resampling_final == 'Repeated Cross-validation (Repeated CV)'",
+                                  numericInput("rcv_value_final",
+                                               "Number of repeats for repeated cross-validation:",
+                                               value=1,
+                                               min=1)
+                 ),
+                 
+                 # RF parameters
+                 conditionalPanel(condition = "input.modelType_final == 'Random Forest (RF)'",
+                                  numericInput("mtry_final", "Number of features to select at each split (mtry)",
+                                               value=0,
+                                               min=0),
+                                  numericInput("min_node_final", "Minimum number of observations in terminal nodes (min_node):",
+                                               value=0,
+                                               min=0)),
+                 
+                 # SVM parameters
+                 conditionalPanel(condition = "input.modelType_final == 'Support Vector Machine (SVM)'",
+                                  numericInput("c_param_final", "C Parameter",
+                                               value=0,
+                                               min=0),
+                                  selectInput("svm_model_final", "Model:", choices = c("Linear", 
+                                                                                       "Polynomial"))),
+                 
+                 # XGBoost Paramters
+                 conditionalPanel(condition = "input.modelType_final == 'Extreme Gradient Boosting (XGBoost)'",
+                                  numericInput("max_depth_final", "Maximum depth (max_depth)",
+                                               value=0,
+                                               min=0),
+                                  numericInput("eta_final", "Learning rate (eta)",
+                                               value=0,
+                                               min=0),
+                                  numericInput("subsample_final", "Subsample proportion (subsample)",
+                                               value=0,
+                                               min=0),
+                                  numericInput("min_child_weight_final", "Minimum Child Weight (min_child_weight)",
+                                               value=0,
+                                               min=0)),
+                 
+                 # Submit button
+                 actionButton("submit_final", "Tune Parameters"),
+                 
                ),
-               
                mainPanel(
-                 tabsetPanel(
-                   tabPanel("Histogram",
-                            plotOutput("plot2"))
-                 )
+                 #textOutput("final_results")
+                 verbatimTextOutput("final_results")
                )
              )
     )
@@ -201,7 +241,7 @@ server <- function(input, output, session) {
   # Hyperparameter tuning functions
   
   tune_rf <- function(cv, rcv, mtry_input, min_node_input, train_data, target) {
-    
+
     if (rcv == "NA") {
       resample <- trainControl(method = "cv",
                                number = cv,
@@ -209,7 +249,7 @@ server <- function(input, output, session) {
                                summaryFunction = twoClassSummary)
     }
     else {
-      resample <- trainControl(method = "rcv",
+      resample <- trainControl(method = "repeatedcv",
                                number = cv,
                                repeats = rcv,
                                classProbs = TRUE,
@@ -219,38 +259,89 @@ server <- function(input, output, session) {
     hyper_grid <- expand.grid(mtry=mtry_input,
                               splitrule = c("gini", "extratrees"),
                               min.node.size=min_node_input)
-
-    print("C")
     
-    #print(train_data)
-    #print(target)
-    #print(train_data[target])
-    #(train_data[, target])
-    
-    
-    cols_to_keep <- setdiff(names(train_data), c(target))
-    x <- data.matrix(train_data[cols_to_keep])
-    y <- data.matrix(train_data[[target]])
-    
-    
-    #rf_fit <- train(as.formula(paste(target, "~ .")),
-    rf_fit <- train(x,y, #data=train_data,
+    rf_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
                     method="ranger",
                     trControl=resample,
                     tuneGrid=hyper_grid,
+                    verbose = FALSE,
                     metric="ROC",
-                    num.trees = 200)
-    print("D")
-    output$hyperparameter_results <-plot(rf_fit, metric = "ROC", plotType = "level")
-    print("E")
+                    num.trees = 300)
+
+    output$hyperparameter_results <-renderPlot({plot(rf_fit, metric = "ROC", plotType = "level")})
   }
   
-  tune_svm <- function(cv, rcv, svm_type, c_param, train_data, target) {
+  tune_svm <- function(cv, rcv, c_param, train_data, target) {
+    if (rcv == "NA") {
+      resample <- trainControl(method = "cv",
+                               number = cv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    else {
+      resample <- trainControl(method = "repeatedcv",
+                               number = cv,
+                               repeats = rcv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
     
+    lin_hyper_grid <- expand.grid(C = c(c_param))
+    svm_linear_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                    method="svmLinear",
+                    trControl=resample,
+                    tuneGrid=lin_hyper_grid,
+                    verbose = FALSE,
+                    metric="ROC")
+
+    poly_hyper_grid <- expand.grid(C = c(c_param),
+                                   degree=c(2,3),
+                                   scale=1)
+    svm_poly_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                            method="svmPoly",
+                            trControl=resample,
+                            tuneGrid=poly_hyper_grid,
+                            verbose = FALSE,
+                            metric="ROC")
+
+    resamps <- resamples(list(SVM_Linear = svm_linear_fit,
+                              SVM_Polynomial = svm_poly_fit))
+
+    output$hyperparameter_results <-renderPlot({bwplot(resamps, layout=c(2,1))})
   }
   
-  tune_xgboost <- function(cv, rcvmax_depth, eta, subsample, min_child_weight, train_data, target) {
+  tune_xgboost <- function(cv, rcv, max_depth, eta, subsample, min_child_weight, train_data, target) {
+    if (rcv == "NA") {
+      resample <- trainControl(method = "cv",
+                               number = cv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    else {
+      resample <- trainControl(method = "repeatedcv",
+                               number = cv,
+                               repeats = rcv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
     
+    hyper_grid <- expand.grid(nrounds = c(100),
+                              max_depth = c(max_depth),
+                              eta = c(eta),
+                              min_child_weight = c(min_child_weight),
+                              subsample = c(subsample),
+                              gamma=0,
+                              colsample_bytree=1)
+    
+    xgboost_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                    method="xgbTree",
+                    trControl=resample,
+                    tuneGrid=hyper_grid,
+                    verbose = FALSE,
+                    metric="ROC",
+                    verbosity=0)
+    
+    output$hyperparameter_results <-renderPlot({plot(xgboost_fit, metric = "ROC", plotType = "level")})
   }
   
   observeEvent(input$submit, {
@@ -285,8 +376,8 @@ server <- function(input, output, session) {
           step_pca(all_numeric_predictors())
       }
 
-      blueprint <- blueprint %>% 
-        step_dummy(all_nominal_predictors())
+      #blueprint <- blueprint %>% 
+      #  step_dummy(all_nominal_predictors())
       
     blueprint_prep <- prep(blueprint, training = training_data_nonreactive)
     transformed_train <- bake(blueprint_prep, new_data = training_data_nonreactive)
@@ -311,10 +402,9 @@ server <- function(input, output, session) {
       tune_rf(cv, rcv, mtry, min_node, transformed_train,response_variable)
     } 
     else if (input$modelType == "Support Vector Machine (SVM)") {
-      svm_type <- input$svm_type_input
-      c_param <- as.numeric(strsplit(input$c_param, ",")[[1]])
+      c_param <- as.numeric(strsplit(input$c_param_input, ",")[[1]])
       
-      tune_svm(cv, rcv, svm_type, c_param, transformed_train, response_variable)
+      tune_svm(cv, rcv, c_param, transformed_train, response_variable)
       
     }
     else if (input$modelType == "Extreme Gradient Boosting (XGBoost)") {
@@ -326,6 +416,197 @@ server <- function(input, output, session) {
       tune_xgboost(cv, rcv, max_depth, eta, subsample, min_child_weight, transformed_train, response_variable)
     }
   })
+  
+  
+  # Final model
+  observeEvent(input$submit_final, {
+    # Get pre-processing steps from before and apply to data
+    
+    training_data_nonreactive <- training_data()
+    testing_data_nonreactive <- testing_data()
+    response_variable <- names(training_data_nonreactive)[1]
+    
+    preprocessing_steps <- input$preprocessing_steps
+    blueprint <- recipe(formula=as.formula(paste(response_variable, "~ .")), data = training_data_nonreactive) %>%
+      #update_role(response_variable, new_role = "outcome") %>%
+      step_string2factor(all_nominal_predictors())
+    
+    if ("Remove features with zero / near-zero variance" %in% preprocessing_steps) {
+      blueprint <- blueprint %>%  
+        step_nzv(all_predictors())
+    }
+    
+    if ("Impute missing features via K-Nearest Neighbors" %in% preprocessing_steps) {
+      blueprint <- blueprint %>%
+        step_impute_knn(all_predictors())
+    }
+    
+    if("Standardize features (scaling & centering)" %in% preprocessing_steps) {
+      blueprint <- blueprint %>%
+        step_center(all_numeric_predictors()) %>%
+        step_scale(all_numeric_predictors())
+    }
+    
+    if("Condense feautres via Principal Component Analysis" %in% preprocessing_steps) {
+      blueprint <- blueprint %>%
+        step_pca(all_numeric_predictors())
+    }
+    
+    #blueprint <- blueprint %>% 
+    #  step_dummy(all_nominal_predictors())
+    
+    blueprint_prep <- prep(blueprint, training = training_data_nonreactive)
+    transformed_train <- bake(blueprint_prep, new_data = training_data_nonreactive)
+    transformed_test <- bake(blueprint_prep, new_data = testing_data_nonreactive)
+    
+    # Get sampling parameters
+    
+    cv <- input$cv_value_final
+    if (input$resampling_final == 'Repeated Cross-validation (Repeated CV)') {
+      rcv <- input$rcv_value_final
+    }
+    else {
+      rcv <- "NA"
+    }
+    
+    # Get hyperparameters and tune
+    
+    if (input$modelType == "Random Forest (RF)") {
+      mtry <- input$mtry_final
+      min_node <- input$min_node_final
+      
+      final_rf(cv, rcv, mtry, min_node, transformed_train,response_variable, transformed_test)
+    } 
+    else if (input$modelType == "Support Vector Machine (SVM)") {
+      c_param <- input$c_param_final
+      svm_model <- input$svm_model_final
+      final_svm(cv, rcv, c_param, svm_model, transformed_train, response_variable, transformed_test)
+      
+    }
+    else if (input$modelType == "Extreme Gradient Boosting (XGBoost)") {
+      max_depth <- input$max_depth_final
+      eta <- input$eta_final
+      subsample <- input$subsample_final
+      min_child_weight <- input$min_child_weight_final
+      
+      final_xgboost(cv, rcv, max_depth, eta, subsample, min_child_weight, transformed_train, response_variable, transformed_test)
+    }
+  })
+  
+  # Final model functions
+  final_rf <- function(cv, rcv, mtry_input, min_node_input, train_data, target, test_data) {
+    
+    if (rcv == "NA") {
+      resample <- trainControl(method = "cv",
+                               number = cv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    else {
+      resample <- trainControl(method = "repeatedcv",
+                               number = cv,
+                               repeats = rcv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    
+    hyper_grid <- expand.grid(mtry=mtry_input,
+                              splitrule = c("gini"),
+                              min.node.size=min_node_input)
+    
+    rf_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                    method="ranger",
+                    trControl=resample,
+                    tuneGrid=hyper_grid,
+                    verbose = FALSE,
+                    metric="ROC",
+                    num.trees = 300)
+    
+    predictions <- predict(rf_fit, newdata = test_data)
+    
+    results <- confusionMatrix(test_data[[target]], predictions)
+    
+    output$final_results <- renderPrint({results})
+  }
+  
+  tune_svm <- function(cv, rcv, c_param, type, train_data, target, test_data) {
+    if (rcv == "NA") {
+      resample <- trainControl(method = "cv",
+                               number = cv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    else {
+      resample <- trainControl(method = "repeatedcv",
+                               number = cv,
+                               repeats = rcv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    
+    if (type == "Linear") {
+      hyper_grid <- expand.grid(C = param)
+      svm_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                              method="svmLinear",
+                              trControl=resample,
+                              tuneGrid=lin_hyper_grid,
+                              verbose = FALSE,
+                              metric="ROC")
+    }
+    else if (type == "Polynomial") {
+      hyper_grid <- expand.grid(C = c_param,
+                                     degree=2,
+                                     scale=1)
+      svm_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                            method="svmPoly",
+                            trControl=resample,
+                            tuneGrid=poly_hyper_grid,
+                            verbose = FALSE,
+                            metric="ROC")
+    }
+
+    predictions <- predict(svm_fit, newdata= test_data)
+    results <- confusionMatrix(test_data[[target]], predictions)
+    
+    output$final_results <-renderText({results})
+  }
+  
+  tune_xgboost <- function(cv, rcv, max_depth, eta, subsample, min_child_weight, train_data, target, test_data) {
+    if (rcv == "NA") {
+      resample <- trainControl(method = "cv",
+                               number = cv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    else {
+      resample <- trainControl(method = "repeatedcv",
+                               number = cv,
+                               repeats = rcv,
+                               classProbs = TRUE,
+                               summaryFunction = twoClassSummary)
+    }
+    
+    hyper_grid <- expand.grid(nrounds = c(100),
+                              max_depth = c(max_depth),
+                              eta = c(eta),
+                              min_child_weight = c(min_child_weight),
+                              subsample = c(subsample),
+                              gamma=0,
+                              colsample_bytree=1)
+    
+    xgboost_fit <- train(as.formula(paste(target, "~ .")), data=train_data,
+                         method="xgbTree",
+                         trControl=resample,
+                         tuneGrid=hyper_grid,
+                         verbose = FALSE,
+                         metric="ROC",
+                         verbosity=0)
+    
+    predictions <- predict(xgboost_fit, newdata = test_data)
+    results <- confusionMatrix(test_data[[target]], predictions)
+    
+    output$final_results <-renderText({results})
+  }
   
   
   # Hyperparameters for all models

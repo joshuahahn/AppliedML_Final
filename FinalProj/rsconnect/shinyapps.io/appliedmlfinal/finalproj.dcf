@@ -1,0 +1,10 @@
+name: finalproj
+title:
+username: appliedmlfinal
+account: appliedmlfinal
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11958877
+bundleId: 8589625
+url: https://appliedmlfinal.shinyapps.io/finalproj/
+version: 1
