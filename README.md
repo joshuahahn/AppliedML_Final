@@ -1,3 +1,5 @@
+The website is accessible at: https://appliedmlfinal.shinyapps.io/finalproj/
+
 4/20 To-do:
 - Joshua: Website
 - Wyatt: Models
